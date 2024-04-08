@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Intrinsic funtion ForEach
+
+Transform: AWS::LanguageExtensions
+
+Parameters:
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+  ListaSufijos:
+    Description:  Lista de sufijos de los buckets
+    Type:         String
+    # Type:         CommaDelimitedList
+
+Resources:
+  Fn::ForEach::Buckets:
+    - BucketName
+    - !Split [',', !Ref ListaSufijos]
+    # - !Ref ListaSufijos
+    - ${BucketName}:
+        Type: AWS::S3::Bucket
+        Properties:
+          BucketName: !Sub ${AWS::AccountId}-${AWS::Region}-${NombreProyecto}-${BucketName}

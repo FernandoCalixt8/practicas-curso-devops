@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Nested Stack SNS
+
+Parameters:
+  NombreTema:
+    Description:    Nombre tema
+    Type:           String
+  Email:
+    AllowedPattern: '[^@]+@[^@]+\.[^@]+'
+    Description:    Email
+    Type:           String
+
+Resources:
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref NombreTema
+  SNSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref Email
+      Protocol: email
+      TopicArn: !Ref SNSTopic
+
+Outputs:
+  ArnSNSTopic:
+    Description:  ARN del tema de SNS
+    Value:        !Ref SNSTopic
+    Export:
+      Name: !Sub ${AWS::StackName}-sns

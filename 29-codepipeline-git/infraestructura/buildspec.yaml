@@ -1,0 +1,30 @@
+version: 0.2
+        
+phases:
+  build:
+    commands:
+      # validaciones
+      - aws cloudformation validate-template --template-body file://template.yaml
+
+      # package
+      - |
+        aws cloudformation package \
+        --s3-bucket $BUCKET_ARTEFACTOS \
+        --s3-prefix $NOMBRE_PROYECTO \
+        --template-file template.yaml \
+        --output-template-file output-template.yaml
+
+      # configuraciones
+      - |
+        cat > configuraciones.json <<EOF
+        {
+            "Parameters": {
+              "NombreProyecto": "$NOMBRE_PROYECTO"
+            }
+        }
+        EOF
+
+artifacts:
+  files:
+    - configuraciones.json
+    - output-template.yaml

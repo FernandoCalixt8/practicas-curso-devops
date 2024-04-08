@@ -1,0 +1,68 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Creacion de API Gateway y Lambda
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+
+
+Resources:
+  ########################################
+  ### API Gateway
+  ########################################
+  ApiGateway:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name:       !Ref NombreProyecto
+      StageName:  dev
+
+  ########################################
+  ### Lambda
+  ########################################
+  RolLambda:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Ref NombreProyecto
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${NombreProyecto}:*
+      Description: Rol de Lambda para API de operaciones
+      RoleName: !Ref NombreProyecto
+
+  Lambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri:      src/lambdas/operaciones/
+      Description:  Lambda para API de operaciones
+      FunctionName: !Ref NombreProyecto
+      Handler:      main.lambda_handler
+      Role:         !GetAtt RolLambda.Arn
+      Runtime:      python3.12
+      Timeout:      3
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId:  !Ref ApiGateway
+            Method: GET
+            Path:   /operaciones/{parametro1}/{parametro2}

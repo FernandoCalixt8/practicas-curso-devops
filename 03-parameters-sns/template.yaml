@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  NombreTema:
+    Description:            Nombre del tema de SNS
+    Type:                   String
+  Email:
+    AllowedPattern:         '[^@]+@[^@]+\.[^@]+'
+    ConstraintDescription:  Debe ser un email valido
+    Description:            Email de la suscripcion
+    Type:                   String
+
+
+Resources:
+  TemaSNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub ${AWS::AccountId}-${AWS::Region}-${NombreTema}
+
+  SuscripcionSNS:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref Email
+      Protocol: email
+      TopicArn: !Ref TemaSNS

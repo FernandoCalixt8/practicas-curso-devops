@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack que despliega una EC2
+
+Parameters:
+  Environment:
+    AllowedValues:
+      - dev
+      - prod
+    Description:  Entorno del despliegue
+    Type:         String
+  NombreProyecto:
+    Description:  Nombre del Proyecto
+    Type:         String
+  VPC:
+    Description:  VPC
+    Type:         AWS::EC2::VPC::Id
+  ImagenEC2:
+    Description:  Imagen de la EC2
+    Type:         AWS::EC2::Image::Id
+  SubnetEC2:
+    Description:  ID de la subred
+    Type:         AWS::EC2::Subnet::Id
+
+
+Mappings:
+  EC2Map:
+    dev:
+      TipoInstanciaEc2: t3.micro
+    prod:
+      TipoInstanciaEc2: t3.large
+
+
+Resources:
+  HTTPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permite todo el trafico de entrada por el puerto 80
+      GroupName:        !Ref NombreProyecto
+      VpcId:            !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp:       0.0.0.0/0
+          Description:  Permite todo el trafico de entrada por el puerto 80
+          IpProtocol:   tcp
+          FromPort:     80
+          ToPort:       80
+
+  InstanciaEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:      !Ref ImagenEC2
+      InstanceType: !FindInMap [EC2Map, !Ref Environment, TipoInstanciaEc2]
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex:              0
+          SubnetId:                 !Ref SubnetEC2
+          GroupSet:
+            - !Ref HTTPSecurityGroup
+      Tags:
+        - Key:    Name
+          Value:  !Ref NombreProyecto
+      UserData:
+        Fn::Base64: 
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            echo "Hola Mundo!" > /var/www/html/index.html

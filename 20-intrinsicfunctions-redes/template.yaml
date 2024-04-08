@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Intrinsic funtion ForEach
+
+Parameters:
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+  VpcCidr:
+    Description:  CIDR de VPC
+    Type:         String
+
+
+Resources:
+  ########################################
+  ### VPC
+  ########################################
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock:          !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport:   true    
+      Tags:
+        - Key:    Name
+          Value:  !Ref NombreProyecto
+
+  ########################################
+  ### Subnets
+  ########################################
+  SubnetPublica1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:     !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock:            !Select [ 0, !Cidr [ !Ref VpcCidr, 4, 4 ]]
+      MapPublicIpOnLaunch:  true
+      VpcId:                !Ref VPC 
+      Tags:
+        - Key:    Name
+          Value:  !Sub ${NombreProyecto}-publica1
+
+  SubnetPublica2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:     !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock:            !Select [ 1, !Cidr [ !Ref VpcCidr, 4, 4 ]]
+      MapPublicIpOnLaunch:  true
+      VpcId:                !Ref VPC
+      Tags:
+        - Key:    Name
+          Value:  !Sub ${NombreProyecto}-publica2
+
+  SubnetPrivada1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:     !Select
+        - 0
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock:            !Select [ 2, !Cidr [ !Ref VpcCidr, 4, 4 ]]
+      VpcId:                !Ref VPC
+      Tags:
+        - Key:    Name
+          Value: !Sub ${NombreProyecto}-privada1
+  
+  SubnetPrivada2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone:     !Select
+        - 1
+        - Fn::GetAZs: !Ref 'AWS::Region'
+      CidrBlock:            !Select [ 3, !Cidr [ !Ref VpcCidr, 4, 4 ]]
+      VpcId:                !Ref VPC
+      Tags:
+        - Key:    Name
+          Value: !Sub ${NombreProyecto}-privada2

@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack que despliega una ingesta
+
+Parameters:
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+  LandingZonePath:
+    Description:  Path de Landing Zone
+    Type:         String
+  StagingZonePath:
+    Description:  Path de Staging Zone
+    Type:         String
+
+
+Resources:
+  ########################################
+  ### Bucket S3
+  ########################################
+  BucketIngesta:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${NombreProyecto}-${AWS::AccountId}-${AWS::Region}
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+
+  ########################################
+  ### Glue
+  ########################################
+  RolJobIngesta:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub ${NombreProyecto}-glue
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/output:*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/error:*
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws-glue/jobs/logs-v2:*
+              -
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:PutObject
+                Effect:   Allow
+                Resource: '*'
+      Description:  Rol de la ingesta de Glue
+      RoleName:     !Sub ${NombreProyecto}-glue
+  JobIngesta:
+    Type: AWS::Glue::Job
+    Properties:
+      Command:
+        Name: glueetl
+        PythonVersion: 3
+        ScriptLocation: src/glue/ingesta/ingesta.py
+      DefaultArguments:
+        '--bucket_ingesta':     !Ref BucketIngesta
+        '--landing_zone_path':  !Ref LandingZonePath
+        '--staging_zone_path':  !Ref StagingZonePath
+      ExecutionProperty:
+        MaxConcurrentRuns: 1
+      Description:      Job de Glue para ingesta
+      GlueVersion:      4.0
+      Name:             !Ref NombreProyecto
+      NumberOfWorkers:  2
+      Role:             !GetAtt RolJobIngesta.Arn
+      Timeout:          5
+      WorkerType:       G.1X
+
+  ########################################
+  ### State Machine
+  ########################################
+  RolMaquinaEstados:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub ${NombreProyecto}-statemachine
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - glue:StartJobRun
+                  - glue:GetJobRun
+                  - glue:BatchStopJobRun
+                  - glue:GetJobRuns
+                Effect:   Allow
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${JobIngesta}
+      Description:  Maquina de estados que ingesta la informacion
+      RoleName:     !Sub ${NombreProyecto}-statemachine
+
+  MaquinaEstados:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      DefinitionString: !Sub |
+        {
+          "Comment": "Maquina de estados que particiona la informacion historica en la capa de staging",
+          "StartAt": "ParticionHistorica",
+          "States": {
+            "ParticionHistorica": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::glue:startJobRun.sync",
+              "Parameters": {
+                "JobName": "${JobIngesta}"
+              },
+              "End": true
+            }
+          }
+        }
+      RoleArn:          !GetAtt RolMaquinaEstados.Arn
+      StateMachineName: !Ref NombreProyecto
+
+  ########################################
+  ### Eventbridge
+  ########################################
+  RolReglaBucketIngesta:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub ${NombreProyecto}-rule
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - states:StartExecution
+                Effect:   Allow
+                Resource:
+                  - !Ref MaquinaEstados
+      Description:  Rol que ejecuta el scheduler de la ingesta
+      RoleName:     !Sub ${NombreProyecto}-rule
+
+  ReglaBucketIngesta:
+    Type: AWS::Events::Rule
+    Properties:
+      EventPattern:
+        detail-type:
+          - Object Created
+        detail:
+          bucket:
+            name:
+              - !Ref BucketIngesta
+          object:
+            key:
+              - prefix: !Sub ${LandingZonePath}/
+        source:
+          - aws.s3
+      Name: !Ref NombreProyecto
+      Targets:
+        - Arn:      !Ref MaquinaEstados
+          Id:       0bcc8798-6b47-421a-9370-a888536dd9fa
+          RoleArn:  !GetAtt RolReglaBucketIngesta.Arn

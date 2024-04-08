@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Crea RDS
+
+Parameters:
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+  VPC:
+    Description:  VPC
+    Type:         String
+  SubnetsRds:
+    Description:  Subnets para el despliegue de la RDS
+    Type:         CommaDelimitedList
+  Usuario:
+    Description:  Nombre del usuario de la base de datos
+    NoEcho:       true
+    Type:         String
+  Contrasena:
+    Description:  Contrasena de la base de datos
+    NoEcho:       true
+    Type:         String
+
+
+Resources:
+  SecurityGroupPostgres:
+    DeletionPolicy: Retain
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permite la conexion a Postgres
+      GroupName:        !Ref NombreProyecto
+      SecurityGroupIngress:
+        -
+          CidrIp:       0.0.0.0/0
+          Description:  Permite la entrada a Postgres
+          FromPort:     5432
+          IpProtocol:   tcp
+          ToPort:       5432
+      VpcId:            !Ref VPC
+      Tags:
+        - Key:    Name
+          Value:  !Ref NombreProyecto
+
+  SubnetGroupPostgres:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription: Subnet Group de Postgres
+      DBSubnetGroupName:        !Ref NombreProyecto
+      SubnetIds:                !Ref SubnetsRds
+
+  RolPostgres:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${NombreProyecto}-postgres
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:DescribeLogStreams
+                  - logs:GetLogEvents
+                  - logs:PutLogEvents
+                  - logs:PutRetentionPolicy
+                Effect:   Allow
+                Resource: '*'
+      RoleName: !Sub ${NombreProyecto}-postgres
+
+  PostgresRDS:
+    DeletionPolicy: Snapshot
+    DependsOn: SubnetGroupPostgres
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage:                   20
+      DBInstanceClass:                    db.t3.small
+      DBInstanceIdentifier:               !Ref NombreProyecto
+      DBName:                             DEVOPS
+      DBSubnetGroupName:                  !Ref NombreProyecto
+      EnablePerformanceInsights:          true
+      Engine:                             postgres
+      EngineVersion:                      15.5
+      MasterUsername:                     !Ref Usuario
+      MasterUserPassword:                 !Ref Contrasena
+      MaxAllocatedStorage:                100
+      MonitoringInterval:                 60
+      MonitoringRoleArn:                  !GetAtt RolPostgres.Arn
+      MultiAZ:                            false
+      NetworkType:                        IPV4
+      Port:                               5432
+      PubliclyAccessible:                 true
+      StorageEncrypted:                   true
+      StorageType:                        gp3
+      VPCSecurityGroups:
+        - !Ref SecurityGroupPostgres

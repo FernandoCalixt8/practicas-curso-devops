@@ -1,0 +1,44 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Crea tabla de DynamoDB
+
+Parameters:
+  Environment:
+    AllowedValues:
+      - dev
+      - prod
+    Description:  Entorno del despliegue
+    Type:         String
+  NombreTablaDynamo:
+    Description:  Nombre de la tabla de DynamoDB
+    Type:         String
+
+
+Mappings:
+  DynamoMap:
+    dev:
+      ReadCapacityUnits:  1
+      WriteCapacityUnits: 1
+    prod:
+      ReadCapacityUnits:  50
+      WriteCapacityUnits: 50
+
+
+Resources:
+  TablaDynamo:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        -
+          AttributeName:  ID
+          AttributeType:  S
+      BillingMode: PROVISIONED
+      KeySchema: 
+        - 
+          AttributeName:  ID
+          KeyType:        HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits:  !FindInMap [DynamoMap, !Ref Environment, ReadCapacityUnits]
+        WriteCapacityUnits: !FindInMap [DynamoMap, !Ref Environment, WriteCapacityUnits]
+      TableClass: STANDARD
+      TableName:  !Ref NombreTablaDynamo

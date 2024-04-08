@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack que despliega una EC2
+
+Parameters:
+  Environment:
+    AllowedValues:
+      - dev
+      - prod
+    Description:  Entorno del despliegue
+    Type:         String
+  NombreProyecto:
+    Description:  Nombre del Proyecto
+    Type:         String
+  VPC:
+    Description:  VPC
+    Type:         AWS::EC2::VPC::Id
+  ImagenEC2:
+    Description:  Imagen de la EC2
+    Type:         AWS::EC2::Image::Id
+  SubnetEC2:
+    Description:  ID de la subred
+    Type:         AWS::EC2::Subnet::Id
+  TipoInstanciaEc2:
+    Default:      t3.micro
+    Description:  Tipo de instancia de EC2
+    Type:         String
+
+
+Conditions:
+  EsProduccion: !Equals [ !Ref Environment, prod]
+
+
+Resources:
+  HTTPSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permite todo el trafico de entrada por el puerto 80
+      GroupName:        !Ref NombreProyecto
+      VpcId:            !Ref VPC
+      SecurityGroupIngress:
+        - CidrIp:       0.0.0.0/0
+          Description:  Permite todo el trafico de entrada por el puerto 80
+          IpProtocol:   tcp
+          FromPort:     80
+          ToPort:       80
+
+  InstanciaEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:      !Ref ImagenEC2
+      InstanceType: !Ref TipoInstanciaEc2
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex:              0
+          SubnetId:                 !Ref SubnetEC2
+          GroupSet:
+            - !Ref HTTPSecurityGroup
+      Tags:
+        - Key:    Name
+          Value:  !Ref NombreProyecto
+      UserData:
+        Fn::Base64: 
+          !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            echo "Hola Mundo!" > /var/www/html/index.html
+
+  ########################################
+  ### Crear volumen cuando el entorno sea "prod"
+  ########################################
+  VolumenEC2:
+    Condition: EsProduccion
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 100
+      AvailabilityZone: !GetAtt InstanciaEC2.AvailabilityZone
+  PuntoMontaje:
+    Condition: EsProduccion
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device:     /dev/sdh
+      InstanceId: !Ref InstanciaEC2
+      VolumeId:   !Ref VolumenEC2

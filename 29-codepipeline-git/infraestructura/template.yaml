@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Creacion de API Gateway, Lambdas y DynamoDB
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+
+
+Resources:
+  ########################################
+  ### Dynamo
+  ########################################
+  TablaProducto:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        -
+          AttributeName:  ID
+          AttributeType:  N
+      BillingMode: PROVISIONED
+      KeySchema: 
+        - 
+          AttributeName:  ID
+          KeyType:        HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits:  1
+        WriteCapacityUnits: 1
+      TableClass: STANDARD
+      TableName:  !Ref NombreProyecto
+
+  ########################################
+  ### API Gateway
+  ########################################
+  ApiGatewayProducto:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Name:       !Ref NombreProyecto
+      StageName:  dev
+
+  ########################################
+  ### Lambdas
+  ########################################
+  ObtenerProductoRolLambda:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub obtener-${NombreProyecto}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/obtener-${NombreProyecto}:*
+              -
+                Action:
+                  - dynamodb:GetItem
+                Effect:   Allow
+                Resource: !GetAtt TablaProducto.Arn
+      Description:  Rol de Lambda que obtiene productos
+      RoleName:     !Sub obtener-${NombreProyecto}
+
+  ObtenerProducto:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri:      src/lambdas/obtener-producto/
+      Description:  Lambda que obtiene productos
+      Environment:
+        Variables:
+          TABLA_PRODUCTO: !Ref TablaProducto
+      FunctionName: !Sub obtener-${NombreProyecto}
+      Handler:      index.handler
+      Role:         !GetAtt ObtenerProductoRolLambda.Arn
+      Runtime:      nodejs20.x
+      Timeout:      4
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId:  !Ref ApiGatewayProducto
+            Method: GET
+            Path:   /producto/{id}
+
+  InsertarProductoRolLambda:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub insertar-${NombreProyecto}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/insertar-${NombreProyecto}:*
+              -
+                Action:
+                  - dynamodb:PutItem
+                Effect:   Allow
+                Resource: !GetAtt TablaProducto.Arn
+      Description:  Rol de Lambda que inserta productos
+      RoleName:     !Sub insertar-${NombreProyecto}
+
+  InsertarProducto:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri:      src/lambdas/insertar-producto/
+      Description:  Lambda que inserta productos
+      Environment:
+        Variables:
+          TABLA_PRODUCTO: !Ref TablaProducto
+      FunctionName: !Sub insertar-${NombreProyecto}
+      Handler:      index.handler
+      Role:         !GetAtt InsertarProductoRolLambda.Arn
+      Runtime:      nodejs20.x
+      Timeout:      4
+      Events:
+        ApiEvent:
+          Type: HttpApi
+          Properties:
+            ApiId:  !Ref ApiGatewayProducto
+            Method: POST
+            Path:   /producto

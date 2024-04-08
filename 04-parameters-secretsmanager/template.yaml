@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  NombreSecreto:
+    Description:  Nombre del Secret Manager
+    Type:         String
+  Usuario:
+    Description:  Nombre del usuario de la base de datos
+    NoEcho:       true
+    Type:         String
+  Contrasena:
+    Description:  Contrasena de la base de datos
+    NoEcho:       true
+    Type:         String
+
+
+Resources:
+  SecretoRDS:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description:  Secret manager con el usuario de una base de datos
+      Name:         !Ref NombreSecreto
+      SecretString: !Sub '{"username":"${Usuario}","password":"${Contrasena}"}'

@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Nested Stacks
+
+Parameters:
+  NombreProyecto:
+    Description:    Nombre del proyecto
+    Type:           String
+  UrlTemplateDynamo:
+    Description:    URL plantilla de Dynamo
+    Type:           String
+  UrlTemplateSNS:
+    Description:    URL plantilla de SNS
+    Type:           String
+  Email:
+    AllowedPattern: '[^@]+@[^@]+\.[^@]+'
+    Description:    Email
+    Type:           String
+
+
+Resources:
+  StackDynamo:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref UrlTemplateDynamo
+      Parameters:
+        NombreTablaDynamo: !Ref NombreProyecto
+
+  StackSNS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref UrlTemplateSNS
+      Parameters:
+        NombreTema: !Ref NombreProyecto
+        Email:      !Ref Email
+
+  SecretoDynamoSNS:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name:         !Ref NombreProyecto
+      SecretString: !Sub '{"arn_database":"${StackDynamo.Outputs.ArnTablaDynamo}","arn_topic":"${StackSNS.Outputs.ArnSNSTopic}"}'
+
+
+Outputs:
+  ArnSecretManager:
+    Description:  ARN del Secret Manager
+    Value:        !Ref SecretoDynamoSNS
+    Export:
+      Name: !Sub ${AWS::StackName}-secretmanager

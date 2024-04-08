@@ -1,0 +1,37 @@
+version: 0.2
+
+phases:
+  # pre_build:
+  #   commands:
+  #     - aws cloudformation validate-template --template-body file://template.yaml
+  build:
+    commands:
+      # validacion
+      - aws cloudformation validate-template --template-body file://template.yaml
+
+      # package
+      - |
+        aws cloudformation package \
+        --s3-bucket $BUCKET_ARTEFACTOS \
+        --s3-prefix $NOMBRE_PROYECTO \
+        --template-file template.yaml \
+        --output-template-file output-template.yaml
+      # configuraciones
+      - |
+        cat > configuraciones.json <<EOF
+        {
+            "Parameters": {
+              "NombreProyecto": "$NOMBRE_PROYECTO",
+              "LandingZonePath": "$LANDING_ZONE_PATH",
+              "StagingZonePath": "$STAGING_ZONE_PATH"
+            }
+        }
+        EOF
+
+
+artifacts:
+  files:
+    - configuraciones.json
+    - output-template.yaml
+
+

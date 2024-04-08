@@ -1,0 +1,14 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack que despliega un SQS
+
+Parameters:
+  NombreSQS:
+    Description:  Nombre del SQS
+    Type:         String
+
+Resources:
+  SQS:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref NombreSQS

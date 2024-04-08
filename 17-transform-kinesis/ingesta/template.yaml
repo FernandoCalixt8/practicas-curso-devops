@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Creacion de Kinesis, Lambda y Bucket S3
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  NombreBucketDatalake:
+    Description:  Nombre del bucket
+    Type:         String
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+
+
+Resources:
+  ########################################
+  ### Bucket S3
+  ########################################
+  Datalake:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${AWS::AccountId}-${AWS::Region}-${NombreBucketDatalake}
+
+  ########################################
+  ### Kinesis
+  ########################################
+  SensorStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name:                 !Ref NombreProyecto
+      RetentionPeriodHours: 120
+      StreamModeDetails:
+        StreamMode: PROVISIONED
+      ShardCount: 2
+
+  SensorStreamConsumidor:
+    Type: AWS::Kinesis::StreamConsumer
+    Properties:
+      StreamARN:    !GetAtt SensorStream.Arn
+      ConsumerName: !Ref NombreProyecto
+
+  ########################################
+  ### Lambda
+  ########################################
+  SensorRolLambda:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ingesta-${NombreProyecto}
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:DescribeStreamSummary
+                  - kinesis:GetRecords
+                  - kinesis:GetShardIterator
+                  - kinesis:ListShards
+                  - kinesis:ListStreams
+                  - kinesis:SubscribeToShard
+                Effect:   Allow
+                Resource:
+                  - !GetAtt SensorStream.Arn
+                  - !Ref SensorStreamConsumidor
+              -
+                Action:
+                  - s3:PutObject
+                Effect:   Allow
+                Resource:
+                  - !GetAtt Datalake.Arn
+                  - !Sub ${Datalake.Arn}/*
+              -
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/ingesta-${NombreProyecto}:*
+      Description:  Rol de la Lamnbda de ingesta
+      RoleName:     !Sub ingesta-${NombreProyecto}
+
+  ContinousIngestionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Environment:
+        Variables:
+          NOMBRE_BUCKET_DATALAKE: !Ref Datalake
+      CodeUri:      src/lambdas/ingesta/
+      Description:  Lamnbda de ingesta
+      FunctionName: !Sub ingesta-${NombreProyecto}
+      Runtime:      python3.12
+      Handler:      main.lambda_handler
+      MemorySize:   128
+      Role:         !GetAtt SensorRolLambda.Arn
+      Timeout:      20
+      Events:
+        StreamRecordsBatch:
+          Type: Kinesis
+          Properties:
+            BatchSize:                      500
+            BisectBatchOnFunctionError:     true
+            Enabled:                        true
+            MaximumBatchingWindowInSeconds: 10
+            MaximumRetryAttempts:           3
+            StartingPosition:               LATEST
+            Stream:                         !GetAtt SensorStreamConsumidor.ConsumerARN

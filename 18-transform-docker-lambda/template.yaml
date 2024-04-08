@@ -1,0 +1,51 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Api Gateway y Lambda con ECR
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  ImageUri:
+    Description:  URL de la imagen de docker
+    Type:         String
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+
+
+Resources:
+  DockerLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Ref NombreProyecto
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${NombreProyecto}:*
+      Description:  Rol de la Lambda con docker
+      RoleName:     !Ref NombreProyecto
+
+  DockerLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Description:  Lambda con docker
+      FunctionName: !Ref NombreProyecto
+      ImageUri:     !Ref ImageUri
+      PackageType:  Image
+      Role:         !GetAtt DockerLambdaRole.Arn
+      Timeout:      10

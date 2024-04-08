@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Crea tabla de DynamoDB
+
+Parameters:
+  Environment:
+    AllowedValues:
+      - dev
+      - prod
+    Description:  Entorno del despliegue
+    Type:         String
+  NombreTablaDynamo:
+    Description:  Nombre de la tabla de DynamoDB
+    Type:         String
+
+
+Conditions:
+  EsProduccion: !Equals [ !Ref Environment, prod]
+
+
+Resources:
+  ########################################
+  ### Tabla DynamoDB
+  ########################################
+  TablaDynamo:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        -
+          AttributeName:  ID
+          AttributeType:  S
+      BillingMode: PROVISIONED
+      KeySchema: 
+        - 
+          AttributeName:  ID
+          KeyType:        HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits:  1
+        WriteCapacityUnits: 1
+      TableClass: STANDARD
+      TableName:  !Ref NombreTablaDynamo
+
+  ########################################
+  ### Escalamiento en lecturas de la tabla DynamoDB
+  ########################################
+  EscalamientoLecturaDynamo:
+    Condition: EsProduccion
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties: 
+      MaxCapacity:        10
+      MinCapacity:        1
+      ResourceId:         !Sub table/${TablaDynamo}
+      RoleARN:            !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable
+      ScalableDimension:  dynamodb:table:ReadCapacityUnits
+      ServiceNamespace:   dynamodb
+
+  EscalamientoLecturaPoliticaDynamo:
+    Condition: EsProduccion
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties: 
+      PolicyName:       read-scaling-policy
+      PolicyType:       TargetTrackingScaling
+      ScalingTargetId:  !Ref EscalamientoLecturaDynamo
+      TargetTrackingScalingPolicyConfiguration: 
+        PredefinedMetricSpecification: 
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+        TargetValue: 70
+
+  ########################################
+  ### Escalamiento en escrituras de la tabla DynamoDB
+  ########################################
+  EscalamientoEscrituraDynamo:
+    Condition: EsProduccion
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties: 
+      MaxCapacity:        10
+      MinCapacity:        1
+      ResourceId:         !Sub table/${TablaDynamo}
+      RoleARN:            !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/dynamodb.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_DynamoDBTable
+      ScalableDimension:  dynamodb:table:WriteCapacityUnits
+      ServiceNamespace:   dynamodb
+
+  EscalamientoEscrituraPoliticaDynamo:
+    Condition: EsProduccion
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties: 
+      PolicyName:       write-scaling-policy
+      PolicyType:       TargetTrackingScaling
+      ScalingTargetId:  !Ref EscalamientoEscrituraDynamo
+      TargetTrackingScalingPolicyConfiguration: 
+        PredefinedMetricSpecification: 
+          PredefinedMetricType: DynamoDBWriteCapacityUtilization
+        TargetValue: 70

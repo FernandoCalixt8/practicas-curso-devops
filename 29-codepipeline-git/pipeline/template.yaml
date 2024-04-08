@@ -1,0 +1,325 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Stack que despliega el pipeline de una API de Productos
+
+Parameters:
+  # pipeline
+  ArnConexionGit:
+    Description:  ARN de la conexion de Git
+    Type:         String
+  NombreRepositorioGit:
+    Description:  Nombre del repositorio de Git
+    Type:         String
+  RamaGit:
+    Description:  Rama de CodeCommit
+    Type:         String
+  # infraestructura
+  NombreProyecto:
+    Description:  Nombre del proyecto
+    Type:         String
+  BucketArtefactos:
+    Description:  Nombre del Bucket de artefactos
+    Type:         String
+
+
+Resources:
+  ########################################
+  ### CodeBuild
+  ########################################
+  RolCodeBuild:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub ${NombreProyecto}-codebuild
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - cloudformation:ValidateTemplate
+                Effect:   Allow
+                Resource: '*'
+              -
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketArtefactos}
+                  - !Sub arn:aws:s3:::${BucketArtefactos}/*
+              -
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:codebuild:${AWS::Region}:${AWS::AccountId}:report-group/${NombreProyecto}*
+              - 
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect:   Allow
+                Resource:
+                  - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/codebuild/${NombreProyecto}:*
+      Description:  Rol de CodeBuild para proyecto de API de Productos
+      RoleName:     !Sub ${NombreProyecto}-codebuild
+
+  CodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Description:      CodeBuild para proyecto de API de Productos
+      Name:             !Ref NombreProyecto
+      ServiceRole:      !GetAtt RolCodeBuild.Arn
+      TimeoutInMinutes: 15
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType:  BUILD_GENERAL1_SMALL
+        EnvironmentVariables:
+          - Name:   NOMBRE_PROYECTO
+            Value:  !Ref NombreProyecto
+          - Name:   BUCKET_ARTEFACTOS
+            Value:  !Ref BucketArtefactos
+        Image:        aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Type:         LINUX_CONTAINER
+      Source: 
+        BuildSpec:  buildspec.yaml
+        Type:       CODEPIPELINE
+
+  ########################################
+  ### CloudFormation
+  ########################################
+  RolCloudFormation:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${NombreProyecto}-cloudformation
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - 
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketAcl
+                  - s3:GetBucketLocation
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketArtefactos}
+                  - !Sub arn:aws:s3:::${BucketArtefactos}/*
+              -
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:PutRolePolicy
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/*${NombreProyecto}
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/${NombreProyecto}*
+              -
+                Action:
+                  - cloudformation:CreateChangeSet
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:aws:transform/Serverless-2016-10-31
+              -
+                Action:
+                  - lambda:*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:*${NombreProyecto}
+              -
+                Action:
+                  - apigateway:*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:apigateway:${AWS::Region}::*
+              -
+                Action:
+                  - dynamodb:*
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${NombreProyecto}
+      Description:  Rol de CloudFormation para proyecto de API de opreaciones
+      RoleName:     !Sub ${NombreProyecto}-cloudformation
+
+  ########################################
+  ### CodePipeline
+  ########################################
+  RolCodePipeline:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          -
+            Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        -
+          PolicyName: !Sub ${NombreProyecto}-codepipeline
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              -
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:PutObject
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:s3:::${BucketArtefactos}
+                  - !Sub arn:aws:s3:::${BucketArtefactos}/*
+              -
+                Action:
+                  - iam:PassRole
+                Effect: Allow
+                Resource:
+                  - !GetAtt RolCloudFormation.Arn
+              -
+                Action:
+                  - codestar-connections:UseConnection
+                Effect: Allow
+                Resource:
+                  - !Ref ArnConexionGit
+              -
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuildBatches
+                  - codebuild:StartBuildBatch
+                Effect: Allow
+                Resource:
+                  - !GetAtt CodeBuild.Arn
+              -
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:UpdateStack
+                Effect: Allow
+                Resource:
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${NombreProyecto}/*
+              - 
+                Action:
+                  - logs:*
+                Effect:   Allow
+                Resource:
+                  - '*'
+      Description:  Rol de CodePipeline para proyecto de API de Productos
+      RoleName:     !Sub ${NombreProyecto}-codepipeline
+
+  CodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ExecutionMode:  QUEUED
+      Name:           !Ref NombreProyecto
+      PipelineType:   V2
+      RoleArn:        !GetAtt RolCodePipeline.Arn
+      ArtifactStore:
+        Location: !Ref BucketArtefactos
+        Type:     S3
+      Stages:
+        - Name: Source
+          Actions:
+            - Name:     Source
+              RunOrder: 1
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: 1
+              Configuration:
+                ConnectionArn:        !Ref ArnConexionGit
+                FullRepositoryId:     !Ref NombreRepositorioGit
+                BranchName:           !Ref RamaGit
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: Source
+        - Name: Build
+          Actions:
+            - Name:     Build
+              RunOrder: 1
+              ActionTypeId:
+                Category: Build
+                Owner:    AWS
+                Provider: CodeBuild
+                Version:  1
+              Configuration:
+                ProjectName: !Ref CodeBuild
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Build
+        - Name: Deploy
+          Actions:
+            - Name:     CrearChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner:    AWS
+                Provider: CloudFormation
+                Version:  1
+              Configuration:
+                ActionMode:             CHANGE_SET_REPLACE
+                Capabilities:           CAPABILITY_NAMED_IAM
+                ChangeSetName:          !Sub ${NombreProyecto}-changeset
+                RoleArn:                !GetAtt RolCloudFormation.Arn
+                StackName:              !Ref NombreProyecto
+                TemplateConfiguration:  'Build::configuraciones.json'
+                TemplatePath:           'Build::output-template.yaml'
+              InputArtifacts:
+                - Name: Build
+              RunOrder: 1
+            - Name:     AprovarChangeSet
+              ActionTypeId:
+                Category: Approval
+                Owner:    AWS
+                Provider: Manual
+                Version:  1
+              RunOrder: 2
+            - Name:     EjecutarChangeSet
+              ActionTypeId:
+                Category: Deploy
+                Owner:    AWS
+                Provider: CloudFormation
+                Version:  1
+              Configuration:
+                ActionMode:     CHANGE_SET_EXECUTE
+                ChangeSetName:  !Sub ${NombreProyecto}-changeset
+                RoleArn:        !GetAtt RolCloudFormation.Arn
+                StackName:      !Ref NombreProyecto
+              RunOrder: 3

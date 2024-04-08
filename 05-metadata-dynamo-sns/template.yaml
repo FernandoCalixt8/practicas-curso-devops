@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Parameters:
+  ########################################
+  ### Dynamo
+  ########################################
+  NombreTablaDynamo:
+    Description:            Nombre de la tabla de DynamoDB
+    Type:                   String
+  CapacidadLectura:
+    Description:            Capacidad de lectura de la tabla de DynamoDB
+    MaxValue:               10
+    MinValue:               1
+    Type:                   Number
+  CapacidadEscritura:
+    Description:            Capacidad de escritura de la tabla de DynamoDB
+    MaxValue:               10
+    MinValue:               1
+    Type:                   Number
+  ########################################
+  ### SNS
+  ########################################
+  NombreTema:
+    Description:            Nombre del tema de SNS
+    Type:                   String
+  Email:
+    AllowedPattern:         '[^@]+@[^@]+\.[^@]+'
+    ConstraintDescription:  Debe ser un email valido
+    Description:            Email de la suscripcion
+    Type:                   String
+
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: 
+          default: Campos de DynamoDB
+        Parameters: 
+          - NombreTablaDynamo
+          - CapacidadLectura
+          - CapacidadEscritura
+      - Label: 
+          default: Campos de SNS
+        Parameters:
+          - NombreTema
+          - Email
+
+
+Resources:
+  ########################################
+  ### Dynamo
+  ########################################
+  TablaDynamo:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions: 
+        -
+          AttributeName:  ID
+          AttributeType:  S
+      BillingMode: PROVISIONED
+      KeySchema: 
+        - 
+          AttributeName:  ID
+          KeyType:        HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits:  !Ref CapacidadLectura
+        WriteCapacityUnits: !Ref CapacidadEscritura
+      TableClass: STANDARD
+      TableName:  !Ref NombreTablaDynamo
+
+  ########################################
+  ### SNS
+  ########################################
+  TemaSNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref NombreTema
+
+  SuscripcionSNS:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !Ref Email
+      Protocol: email
+      TopicArn: !Ref TemaSNS
